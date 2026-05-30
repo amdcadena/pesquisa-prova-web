@@ -239,6 +239,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [distanceFilter, setDistanceFilter] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [editingId, setEditingId] = useState(null);
 
   useEffect(() => {
     loadRecords();
@@ -260,6 +261,24 @@ export default function App() {
 
     setRecords(data || []);
     setLoading(false);
+  }
+
+  function handleEdit(record) {
+    setForm({
+      nome: record.nome || "",
+      sobrenome: record.sobrenome || "",
+      distancia: record.distancia || "",
+      tempoEstimado: record.tempo_estimado || "",
+      tempoReal: record.tempo_real || "",
+    });
+
+    setEditingId(record.id);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleCancelEdit() {
+    setForm(emptyForm);
+    setEditingId(null);
   }
 
   async function handleSubmit(e) {
@@ -292,19 +311,38 @@ export default function App() {
 
     setSaving(true);
 
-    const payload = {
-      nome: form.nome.trim(),
-      sobrenome: form.sobrenome.trim(),
-      distancia: form.distancia,
-      tempo_estimado: form.tempoEstimado,
-      tempo_real: form.tempoReal,
-    };
+    let response;
 
-    const { data, error } = await supabase
-      .from("tempos_prova")
-      .insert([payload])
-      .select()
-      .single();
+    if (editingId) {
+      response = await supabase
+        .from("tempos_prova")
+        .update({
+          nome: form.nome.trim(),
+          sobrenome: form.sobrenome.trim(),
+          distancia: form.distancia,
+          tempo_estimado: form.tempoEstimado,
+          tempo_real: form.tempoReal,
+        })
+        .eq("id", editingId)
+        .select()
+        .single();
+    } else {
+      response = await supabase
+        .from("tempos_prova")
+        .insert([
+          {
+            nome: form.nome.trim(),
+            sobrenome: form.sobrenome.trim(),
+            distancia: form.distancia,
+            tempo_estimado: form.tempoEstimado,
+            tempo_real: form.tempoReal,
+          },
+        ])
+        .select()
+        .single();
+    }
+
+    const { data, error } = response;
 
     setSaving(false);
 
@@ -313,9 +351,16 @@ export default function App() {
       return;
     }
 
-    setRecords((prev) => [data, ...prev]);
+    if (editingId) {
+      setRecords((prev) => prev.map((item) => (item.id === editingId ? data : item)));
+      alert("Registro atualizado com sucesso.");
+    } else {
+      setRecords((prev) => [data, ...prev]);
+      alert("Registro salvo com sucesso.");
+    }
+
     setForm(emptyForm);
-    alert("Registro salvo com sucesso.");
+    setEditingId(null);
   }
 
   const filteredRecords = useMemo(() => {
@@ -375,7 +420,7 @@ export default function App() {
               marginBottom: 12,
             }}
           >
-            FORMULÁRIO 100 Maratonas PG • Se desafie.
+            FORMULÁRIO PÚBLICO • PROVA
           </div>
 
           <h1
@@ -386,7 +431,7 @@ export default function App() {
               letterSpacing: "-0.02em",
             }}
           >
-            Registro de Tempos da Prova
+            100 Maratonas de Paulo Gustavo
           </h1>
 
           <p
@@ -399,15 +444,12 @@ export default function App() {
               maxWidth: 760,
             }}
           >
-            Formulário público para registrar nome, sobrenome, distância escolhida, tempo estimado e tempo
-            real. Todos os participantes podem visualizar os registros.
+            Cada quilômetro tem uma história. Registre nome, distância, tempo estimado e tempo real
+            nesta jornada de superação.
           </p>
         </div>
 
-        <Card
-          title="Resumo rápido"
-          subtitle="Visão geral da base cadastrada."
-        >
+        <Card title="Resumo rápido" subtitle="Visão geral da base cadastrada.">
           <div
             style={{
               display: "grid",
@@ -424,8 +466,12 @@ export default function App() {
         </Card>
 
         <Card
-          title="Novo registro"
-          subtitle="Preencha os dados do participante."
+          title={editingId ? "Editar registro" : "Novo registro"}
+          subtitle={
+            editingId
+              ? "Atualize os dados do participante selecionado."
+              : "Preencha os dados do participante."
+          }
         >
           <form onSubmit={handleSubmit}>
             <div
@@ -496,21 +542,26 @@ export default function App() {
               </div>
 
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <SecondaryButton onClick={() => setForm(emptyForm)} disabled={saving}>
-                  Limpar
+                <SecondaryButton
+                  onClick={editingId ? handleCancelEdit : () => setForm(emptyForm)}
+                  disabled={saving}
+                >
+                  {editingId ? "Cancelar edição" : "Limpar"}
                 </SecondaryButton>
+
                 <PrimaryButton type="submit" disabled={saving}>
-                  {saving ? "Salvando..." : "Salvar registro"}
+                  {saving
+                    ? "Salvando..."
+                    : editingId
+                    ? "Salvar alterações"
+                    : "Salvar registro"}
                 </PrimaryButton>
               </div>
             </div>
           </form>
         </Card>
 
-        <Card
-          title="Filtros"
-          subtitle="Refine a visualização dos participantes."
-        >
+        <Card title="Filtros" subtitle="Refine a visualização dos participantes.">
           <div
             style={{
               display: "grid",
@@ -581,6 +632,7 @@ export default function App() {
                     <th style={{ padding: "14px 12px" }}>Tempo estimado</th>
                     <th style={{ padding: "14px 12px" }}>Tempo real</th>
                     <th style={{ padding: "14px 12px" }}>Registro</th>
+                    <th style={{ padding: "14px 12px" }}>Ação</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -594,6 +646,11 @@ export default function App() {
                       <td style={{ padding: "14px 12px" }}>{record.tempo_estimado}</td>
                       <td style={{ padding: "14px 12px", fontWeight: 700 }}>{record.tempo_real}</td>
                       <td style={{ padding: "14px 12px" }}>{formatDate(record.created_at)}</td>
+                      <td style={{ padding: "14px 12px" }}>
+                        <SecondaryButton onClick={() => handleEdit(record)}>
+                          Editar
+                        </SecondaryButton>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
