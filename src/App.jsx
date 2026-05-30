@@ -187,6 +187,28 @@ function SecondaryButton({ children, onClick, disabled = false }) {
   );
 }
 
+function DangerButton({ children, onClick, disabled = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        background: disabled ? "#3f3f46" : "#7f1d1d",
+        color: "white",
+        border: "1px solid #991b1b",
+        borderRadius: 16,
+        padding: "14px 18px",
+        fontSize: 15,
+        fontWeight: 700,
+        cursor: disabled ? "not-allowed" : "pointer",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 function MetricCard({ title, value, subtitle = "" }) {
   return (
     <div
@@ -237,6 +259,7 @@ export default function App() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [distanceFilter, setDistanceFilter] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [editingId, setEditingId] = useState(null);
@@ -279,6 +302,37 @@ export default function App() {
   function handleCancelEdit() {
     setForm(emptyForm);
     setEditingId(null);
+  }
+
+  async function handleDelete(record) {
+    const confirmed = window.confirm(
+      `Deseja realmente excluir o registro de ${record.nome} ${record.sobrenome}?`
+    );
+
+    if (!confirmed) return;
+
+    setDeletingId(record.id);
+
+    const { error } = await supabase
+      .from("tempos_prova")
+      .delete()
+      .eq("id", record.id);
+
+    setDeletingId(null);
+
+    if (error) {
+      alert("Erro ao excluir: " + error.message);
+      return;
+    }
+
+    setRecords((prev) => prev.filter((item) => item.id !== record.id));
+
+    if (editingId === record.id) {
+      setForm(emptyForm);
+      setEditingId(null);
+    }
+
+    alert("Registro excluído com sucesso.");
   }
 
   async function handleSubmit(e) {
@@ -632,7 +686,7 @@ export default function App() {
                     <th style={{ padding: "14px 12px" }}>Tempo estimado</th>
                     <th style={{ padding: "14px 12px" }}>Tempo real</th>
                     <th style={{ padding: "14px 12px" }}>Registro</th>
-                    <th style={{ padding: "14px 12px" }}>Ação</th>
+                    <th style={{ padding: "14px 12px" }}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -647,9 +701,17 @@ export default function App() {
                       <td style={{ padding: "14px 12px", fontWeight: 700 }}>{record.tempo_real}</td>
                       <td style={{ padding: "14px 12px" }}>{formatDate(record.created_at)}</td>
                       <td style={{ padding: "14px 12px" }}>
-                        <SecondaryButton onClick={() => handleEdit(record)}>
-                          Editar
-                        </SecondaryButton>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <SecondaryButton onClick={() => handleEdit(record)}>
+                            Editar
+                          </SecondaryButton>
+                          <DangerButton
+                            onClick={() => handleDelete(record)}
+                            disabled={deletingId === record.id}
+                          >
+                            {deletingId === record.id ? "Excluindo..." : "Excluir"}
+                          </DangerButton>
+                        </div>
                       </td>
                     </tr>
                   ))}
