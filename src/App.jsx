@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient";
 
-const DISTANCES = ["5 Km", "10 Km", "21 Km", "Maratona"];
+const DISTANCES = ["5 Km", "10 Km", "21 Km", "Maratona", "Não corri"];
 
 const emptyForm = {
   nome: "",
   sobrenome: "",
   distancia: "",
-  tempoEstimado: "",
-  tempoReal: "",
+  tempoEstimado: "00:00:00",
+  tempoReal: "00:00:00",
 };
 
 function Card({ title, subtitle, children, right }) {
@@ -234,6 +234,7 @@ function MetricCard({ title, value, subtitle = "" }) {
 function formatTime(value) {
   const cleaned = value.replace(/\D/g, "").slice(0, 6);
 
+  if (cleaned.length === 0) return "";
   if (cleaned.length <= 2) return cleaned;
   if (cleaned.length <= 4) return `${cleaned.slice(0, 2)}:${cleaned.slice(2)}`;
   return `${cleaned.slice(0, 2)}:${cleaned.slice(2, 4)}:${cleaned.slice(4, 6)}`;
@@ -252,6 +253,10 @@ function timeToSeconds(value) {
 function formatDate(dateString) {
   if (!dateString) return "-";
   return new Date(dateString).toLocaleString("pt-BR");
+}
+
+function isZeroTime(value) {
+  return value === "00:00:00";
 }
 
 export default function App() {
@@ -291,8 +296,8 @@ export default function App() {
       nome: record.nome || "",
       sobrenome: record.sobrenome || "",
       distancia: record.distancia || "",
-      tempoEstimado: record.tempo_estimado || "",
-      tempoReal: record.tempo_real || "",
+      tempoEstimado: record.tempo_estimado || "00:00:00",
+      tempoReal: record.tempo_real || "00:00:00",
     });
 
     setEditingId(record.id);
@@ -353,45 +358,39 @@ export default function App() {
       return;
     }
 
-    if (!isValidTime(form.tempoEstimado)) {
-      alert("Preencha o tempo estimado no formato HH:MM:SS.");
+    if (form.tempoEstimado && !isValidTime(form.tempoEstimado)) {
+      alert("Se preencher o tempo estimado, use o formato HH:MM:SS.");
       return;
     }
 
-    if (!isValidTime(form.tempoReal)) {
-      alert("Preencha o tempo real no formato HH:MM:SS.");
+    if (form.tempoReal && !isValidTime(form.tempoReal)) {
+      alert("Se preencher o tempo real, use o formato HH:MM:SS.");
       return;
     }
 
     setSaving(true);
+
+    const payload = {
+      nome: form.nome.trim(),
+      sobrenome: form.sobrenome.trim(),
+      distancia: form.distancia,
+      tempo_estimado: form.tempoEstimado || "00:00:00",
+      tempo_real: form.tempoReal || "00:00:00",
+    };
 
     let response;
 
     if (editingId) {
       response = await supabase
         .from("tempos_prova")
-        .update({
-          nome: form.nome.trim(),
-          sobrenome: form.sobrenome.trim(),
-          distancia: form.distancia,
-          tempo_estimado: form.tempoEstimado,
-          tempo_real: form.tempoReal,
-        })
+        .update(payload)
         .eq("id", editingId)
         .select()
         .single();
     } else {
       response = await supabase
         .from("tempos_prova")
-        .insert([
-          {
-            nome: form.nome.trim(),
-            sobrenome: form.sobrenome.trim(),
-            distancia: form.distancia,
-            tempo_estimado: form.tempoEstimado,
-            tempo_real: form.tempoReal,
-          },
-        ])
+        .insert([payload])
         .select()
         .single();
     }
@@ -444,7 +443,7 @@ export default function App() {
 
   const sortedByRealTime = useMemo(() => {
     return [...filteredRecords]
-      .filter((r) => isValidTime(r.tempo_real))
+      .filter((r) => isValidTime(r.tempo_real) && !isZeroTime(r.tempo_real))
       .sort((a, b) => timeToSeconds(a.tempo_real) - timeToSeconds(b.tempo_real));
   }, [filteredRecords]);
 
@@ -516,6 +515,7 @@ export default function App() {
             <MetricCard title="10 Km" value={summary.byDistance["10 Km"] || 0} />
             <MetricCard title="21 Km" value={summary.byDistance["21 Km"] || 0} />
             <MetricCard title="Maratona" value={summary.byDistance["Maratona"] || 0} />
+            <MetricCard title="Não corri" value={summary.byDistance["Não corri"] || 0} />
           </div>
         </Card>
 
@@ -557,7 +557,7 @@ export default function App() {
               />
 
               <Field
-                label="Tempo estimado *"
+                label="Tempo estimado"
                 value={form.tempoEstimado}
                 onChange={(e) =>
                   setForm((prev) => ({
@@ -565,11 +565,11 @@ export default function App() {
                     tempoEstimado: formatTime(e.target.value),
                   }))
                 }
-                placeholder="00:45:00"
+                placeholder="00:00:00"
               />
 
               <Field
-                label="Tempo real *"
+                label="Tempo real"
                 value={form.tempoReal}
                 onChange={(e) =>
                   setForm((prev) => ({
@@ -577,7 +577,7 @@ export default function App() {
                     tempoReal: formatTime(e.target.value),
                   }))
                 }
-                placeholder="00:43:28"
+                placeholder="00:00:00"
               />
             </div>
 
@@ -592,7 +592,8 @@ export default function App() {
               }}
             >
               <div style={{ color: "#a1a1aa", fontSize: 14 }}>
-                Use o formato <strong>HH:MM:SS</strong> para os tempos.
+                Os campos de tempo são opcionais. Quando não houver informação, mantenha{" "}
+                <strong>00:00:00</strong>.
               </div>
 
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -641,7 +642,7 @@ export default function App() {
 
         <Card
           title="Classificação por tempo real"
-          subtitle="Ordenação do menor para o maior tempo, conforme os filtros."
+          subtitle="Ordenação do menor para o maior tempo, conforme os filtros. Registros com 00:00:00 não entram no ranking."
           right={
             <div style={{ color: "#a1a1aa", fontSize: 14 }}>
               {loading ? "Carregando..." : `${sortedByRealTime.length} registros`}
